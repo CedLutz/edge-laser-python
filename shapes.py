@@ -32,19 +32,11 @@ while not game.isStopped():
         if game.player1_keys.xp :
             posx+=5
 
-    game.addRectangle(posx, posy, posx+10, posy+10, EdgeLaser.LaserColor.RED)
-
     coeff = 0 if coeff > 499 else coeff + 4
 
-    i += 1
-    if i > 400:
-        i = 1
-    font.render(game, 'EDGEFEST', 40, 40, coeff=i%40+1)
+    font.render(game, 'EDGEFEST 2014', 20, 40, coeff=3)
 
-    game.addLine(250, 0, coeff, 250, EdgeLaser.LaserColor.CYAN) \
-    .addLine(250, 500, coeff, 250, EdgeLaser.LaserColor.CYAN) \
-    .addCircle(250, 250, coeff, EdgeLaser.LaserColor.FUCHSIA) \
-    .addRectangle(10, 10, coeff, coeff) #\
+    game.addRectangle(250, 400, 550, 450)
 
     game.refresh()
     time.sleep(0.05)
