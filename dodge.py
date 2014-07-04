@@ -238,9 +238,11 @@ if __name__ == "__main__":
             game.endFrame()
 
             if player1.score == 3 or player2.score == 3:
-                if player1.score == 3:
-                    display_msg(game, font, "P1 WINS")
-                if player2.score == 3:
+                if player1.score == 3 and player2.score == 3:
+                    display_msg(game, font, "DRAW")
+                elif player2.score == 3:
                     display_msg(game, font, "P2 WINS")
+                else:
+                    display_msg(game, font, "P1 WINS")
                 game.pause()
                 break
