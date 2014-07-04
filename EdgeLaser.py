@@ -11,7 +11,7 @@ from construct import macros
 
 import datetime
 
-# HOST="192.168.1.73"
+# HOST="192.168.1.29"
 HOST="localhost"
 PORT=4242
 
@@ -226,6 +226,12 @@ PausePacket = Struct("PausePacket",
     Magic("S"),
 )
 
+KinectPacket = Struct("KinectPacket",
+    # Magic("C"),
+    ULInt8("gameid"),
+    Magic("K"),
+)
+
 PlayerKeyPacket = Struct("PlayerKeyPacket",
     # Magic("I"),
     BitStruct("player2",
@@ -308,7 +314,8 @@ class LaserGame(object):
     def isStopped(self):
         return self.stopped
 
-
+    def useKinect(self):
+        self.sendPacket(KinectPacket, gameid=self.gameid)
 
     def receiveServerCommands(self):
         commands = []
@@ -408,6 +415,7 @@ class LaserGame(object):
     def pause(self):
 
         self.sendPacket(PausePacket, gameid=self.gameid)
+        self.stopped = True
 
         return self
 
@@ -445,7 +453,7 @@ class LaserFont(object):
                     coordlist.append(struct.unpack('B', val)[0])
                 self.letters[char] = coordlist
 
-    def render(self, game, text, x, y, color=LaserColor.LIME, coeff=1):
+    def render(self, game, text, x, y, color=LaserColor.LIME, coeff=1, spacing_factor=8):
         offset_x = x
         offset_y = y
 
@@ -465,7 +473,7 @@ class LaserFont(object):
         for char in text:
             tmp_offset = 0
             if char == ' ':
-                tmp_offset = 8 * coeff
+                tmp_offset = spacing_factor * coeff
             else:
                 for line in grouper(4, scaledletters[char]):
                     game.addLine(line[0] + offset_x, line[1] + offset_y, line[2] + offset_x, line[3] + offset_y, color)

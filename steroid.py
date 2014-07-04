@@ -11,15 +11,18 @@ SPACE_X = 1000
 SPACE_Y = 1000
 STATUS_ALIVE=1
 STATUS_DYING=2
-STATUS_RESPAWN=3
+STATUS_DEAD=3
+STATUS_RESPAWN=4
 SPEED_LIMIT_BY_SIZE=5
+GAME_DURATION = 120
 
 game.setResolution(1000).setDefaultColor(EdgeLaser.LaserColor.LIME)
 
-game.setFrameRate(20)
+game.setFrameRate(30)
 
 # global game objects list
 game_objects = None
+score_manager = None
 
 class Angle(object):
     def __init__(self, value):
@@ -107,6 +110,7 @@ class Vector2D(object):
 
 class GameObject(object):
     def __init__(self,ident,x,y,angle,color=EdgeLaser.LaserColor.LIME):
+        self.time_limit = 0
         self.x=x
         self.y=y
         self.angle=Angle(angle)
@@ -117,7 +121,11 @@ class GameObject(object):
         self.color=color
         self.movement_vector=Vector(self.angle,0.0)
         self.display=True
+        self.creation_date=datetime.datetime.now()
         game_objects.append(self)
+
+    def get_age_in_seconds(self):
+        return (datetime.datetime.now()-self.creation_date).total_seconds()
 
     def get_speed_limit(self):
         return None
@@ -186,6 +194,9 @@ class GameObject(object):
         assert len(other.polygon) > 0, "{} polygon is empty".format(other.ident)
         return self.intersects(other.polygon)
 
+    def distance(self, other):
+        return math.sqrt((self.x-other.x)**2 + (self.y-other.y)**2)
+
     def apply_movement(self):
         l=self.get_speed_limit()
         if l:
@@ -220,6 +231,10 @@ class GameObject(object):
         self.movement_vector.value=min(self.movement_vector.value,Asteroid.START_SPEED*2)
         other.movement_vector.value=min(other.movement_vector.value,Asteroid.START_SPEED*2)
 
+    def expire(self):
+        if self.time_limit and self.get_age_in_seconds() > self.time_limit :
+            self.destroy()
+
 
 def apply_rot(angle,x,y):
     return x*math.cos(angle)-y*math.sin(angle) , x*math.sin(angle)+y*math.cos(angle)
@@ -251,6 +266,7 @@ class Fire(GameObject):
         self.player=player
         self.movement_vector=Vector(player.angle,player.movement_vector.value+5.0)
         self.polygon=[]
+        self.time_limit=3.5
 
     def draw(self, game):
         p1=(0,-self.width/2)
@@ -270,8 +286,10 @@ class Fire(GameObject):
     def collide(self, other):
         if isinstance(other, Player):
             other.die()
+            score_manager.on_kill(self.player,other)
         elif isinstance(other, Asteroid):
             other.destroy()
+            score_manager.on_kill(self.player,other)
         elif isinstance(other, Fire):
             other.destroy()
         self.destroy()
@@ -295,7 +313,8 @@ class Fire(GameObject):
 class Player(GameObject):
     def __init__(self,ident,*args,**kwargs):
         GameObject.__init__(self,ident,*args,**kwargs)
-        self.width=50
+        self.score = 0
+        self.width=70
         self.speed_vector=Vector(self.angle,0.0)
         self.booster = False
         self.fire = False
@@ -313,6 +332,7 @@ class Player(GameObject):
 
     def die(self):
         self.status=STATUS_DYING
+        explode(self,3,True,3)
         self.stop()
 
     def draw(self, game):
@@ -321,11 +341,12 @@ class Player(GameObject):
                 self.width-=3
             else:
                 # self.status=STATUS_ALIVE
+                self.status=STATUS_DEAD
                 self.destroy()
 
-        p1=(0,-self.width/3)
+        p1=(0,-self.width/4)
         p2=(self.width,0)
-        p3=(0,self.width/3)
+        p3=(0,self.width/4)
 
         p1=apply_rot(self.angle.value,*p1)
         p2=apply_rot(self.angle.value,*p2)
@@ -375,6 +396,58 @@ def poly_points_closed(points):
 def draw_poly(game, game_obj):
     for pt1,pt2 in poly_points_closed(game_obj.polygon):
         game.addLine(pt1[0],pt1[1],pt2[0],pt2[1], game_obj.color)
+
+def explode(obj, particle_count,growing=False,time_limit=3):
+
+    for i in range(particle_count):
+        particle=Particle("PART",growing,obj.x, obj.y, random.random()*2*math.pi, color=obj.color)
+        particle.time_limit=time_limit
+        particle.movement_vector.angle.value=random.random()*2*math.pi
+        particle.movement_vector.value=random.randint(1,10)
+        particle.draw(game)
+
+
+class Particle(GameObject):
+    START_SPEED = 2.0
+
+    def __init__(self,ident,growing=False,*args,**kwargs):
+        GameObject.__init__(self,ident,*args,**kwargs)
+        self.width=10
+        self.speed_vector=Vector(self.angle,0.0)
+        self.polygon=[]
+        self.moment=0.0
+        self.rnd_factor1=random.random()
+        self.rnd_factor2=random.random()
+        self.original_width=self.width
+        self.growing=growing
+        self.width=1
+
+
+    def draw(self, game):
+        if self.growing:
+            self.width=self.get_age_in_seconds()*3
+
+        p1=(0,-int(self.width/3*self.rnd_factor2))
+        p2=(self.width/2,0)
+        p3=(0,self.width/5)
+        p4=(-int(self.width/2*self.rnd_factor1),self.width/4)
+
+        p1=apply_rot(self.angle.value,*p1)
+        p2=apply_rot(self.angle.value,*p2)
+        p3=apply_rot(self.angle.value,*p3)
+        p4=apply_rot(self.angle.value,*p4)
+
+        p1=apply_trans(self,*p1)
+        p2=apply_trans(self,*p2)
+        p3=apply_trans(self,*p3)
+        p4=apply_trans(self,*p4)
+
+        self.polygon=[p1,p2,p3,p4]
+
+
+    def apply_movement(self):
+        self.angle+=self.moment
+        GameObject.apply_movement(self)
 
 class Asteroid(GameObject):
     START_SPEED = 2.0
@@ -429,8 +502,8 @@ class Asteroid(GameObject):
 
 
 class AsteroidManager(object):
-    MAX_SIZE = 250
-    MIN_SIZE = 30
+    MAX_SIZE = 300
+    MIN_SIZE = 100
     CREATION_RATE_PER_S=0.1
     MIN_INTERVAL=5
     MAX_ASTEROIDS=10
@@ -496,9 +569,106 @@ class AsteroidManager(object):
 
         self.last_creation=datetime.datetime.now()
 
+def place_object_in_field(obj,border=0,safe_zone=0):
+    while not game.isStopped() :
+        game.receiveServerCommands()
+
+        rand_x = random.randint(border,SPACE_X-border)
+        rand_y = random.randint(border,SPACE_Y-border)
+        rand_angle = random.random()*2*math.pi
+
+        obj.x = rand_x
+        obj.y = rand_y
+        obj.angle.value = rand_angle
+
+        obj.draw(game)
+
+        for go in game_objects:
+            if go.polygon is None or len(go.polygon) == 0:
+                go.draw(game)
+            if go is not obj and go.is_colliding(obj):
+                continue
+            if go.distance(obj)<safe_zone:
+                continue
+
+        break
+
+
+class ScoreManager(object):
+
+    def __init__(self):
+        self.start_time=datetime.datetime.now()
+
+    def get_remaining_time(self):
+        return (datetime.datetime.now() - self.start_time).total_seconds()
+
+    def on_kill(self, killer, dead):
+        if isinstance(dead, Player):
+            if killer is dead :
+                killer.score-=100
+            else:
+                killer.score += int(self.get_remaining_time()) * 1000
+        elif isinstance(dead, Asteroid):
+            killer.score += (AsteroidManager.MAX_SIZE - dead.width + 1)*10
+
+        print("{}: {}".format(killer.ident, killer.score))
+
+
+def double_scroll(text1, text2):
+    font = EdgeLaser.LaserFont('lcd.elfc')
+    #
+    i=0
+
+    while i < 3000 :
+        game.newFrame()
+        font.render(game, text1, i-500, 500, coeff=20)
+        font.render(game, text2, 500-i, 700, coeff=20)
+
+        game.refresh()
+        game.endFrame()
+        i+=25
+
+def intro_screen():
+    double_scroll("EDGE","STEROID")
+
+    i=0
+
+    dummy=GameObject("INTRO",SPACE_X/2,400,0.0)
+
+    explode(dummy,10,True,5)
+
+    dummy.destroy()
+
+    exists_particle=True
+
+    while exists_particle and not game.isStopped():
+        game.newFrame()
+        for game_obj in game_objects:
+            game_obj.apply_movement()
+            game_obj.draw(game)
+            draw_poly(game,game_obj)
+            game_obj.expire()
+
+        game.refresh()
+        exists_particle = any(( isinstance(o, Particle) for o in game_objects))
+        game.endFrame()
+        i+=25
 
 
 
+def double_display(text1, text2):
+    font = EdgeLaser.LaserFont('lcd.elfc')
+    #
+    i=0
+
+    while not game.isStopped() and i < 3000:
+        game.newFrame()
+        font.render(game, text1, 1, 500, coeff=20, spacing_factor=3)
+        font.render(game, text2, 1, 700, coeff=20, spacing_factor=3)
+
+        game.refresh()
+        game.endFrame()
+        i+=25
 
 
 while True:
@@ -506,13 +676,17 @@ while True:
 
     while game.isStopped():
         game.receiveServerCommands()
-        time.sleep(0.5)
+        time.sleep(0.1)
+
+    # intro screen
+
+    intro_screen()
 
     game_start_time = datetime.datetime.now()
 
 
-    player1 = Player("PLAYER1",300,500,math.pi/2,color=EdgeLaser.LaserColor.BLUE)
-    player2 = Player("PLAYER2",600,500,math.pi/2,color=EdgeLaser.LaserColor.RED)
+    player1 = Player("PLAYER1",300,500,math.pi/2,color=EdgeLaser.LaserColor.WHITE)
+    player2 = Player("PLAYER2",600,500,math.pi/2,color=EdgeLaser.LaserColor.CYAN)
 
     dangle=0.1
 
@@ -522,90 +696,145 @@ while True:
     BORDER_TOP=[(0.0,SPACE_Y),(SPACE_X, SPACE_Y)]
 
     am=AsteroidManager()
+    score_manager = ScoreManager()
+
+    place_object_in_field(player1,300,700)
+    place_object_in_field(player2,300,700)
+
+    player1.movement_vector.value=random.randint(1,3)
+    player1.movement_vector.angle=player1.angle
+    player2.movement_vector.value=random.randint(1,3)
+    player2.movement_vector.angle=player2.angle
 
 
     while not game.isStopped():
 
-        game_duration = datetime.datetime.now() - game_start_time
+        try:
 
-        game.newFrame()
+            game_duration = (datetime.datetime.now() - game_start_time).total_seconds()
 
-        game.receiveServerCommands()
+            winner_bonus = (GAME_DURATION - game_duration) * 100
 
-        if game.player1_keys:
-            if game.player1_keys.xn :
-                player1.angle.add(-dangle)
-            elif game.player1_keys.xp :
-                player1.angle.add(dangle)
+            game.newFrame()
 
-            player1.booster = game.player1_keys.a
-            player1.fire =    game.player1_keys.b
+            game.receiveServerCommands()
 
-        if game.player2_keys:
-            if game.player2_keys.xn :
-                player2.angle.add(-dangle)
-            elif game.player2_keys.xp :
-                player2.angle.add(dangle)
+            if game.player1_keys:
+                if game.player1_keys.xn :
+                    player1.angle.add(-dangle)
+                elif game.player1_keys.xp :
+                    player1.angle.add(dangle)
 
-            player2.booster = game.player2_keys.a
-            player2.fire =    game.player2_keys.b
+                player1.booster = game.player1_keys.a
+                player1.fire =    game.player1_keys.b
 
-        for player in [player1, player2] :
-            player.do_fire()
+            if game.player2_keys:
+                if game.player2_keys.xn :
+                    player2.angle.add(-dangle)
+                elif game.player2_keys.xp :
+                    player2.angle.add(dangle)
 
-        am.manage_asteroids(game_objects)
+                player2.booster = game.player2_keys.a
+                player2.fire =    game.player2_keys.b
 
-        for game_obj in game_objects:
-            game_obj.apply_movement()
+            for player in [player1, player2] :
+                player.do_fire()
+
+            am.manage_asteroids(game_objects)
+
+            for game_obj in game_objects:
+                game_obj.apply_movement()
 
 
-        for game_obj in game_objects:
-            game_obj.draw(game)
+            for game_obj in game_objects:
+                game_obj.draw(game)
 
-        for go1 in game_objects:
-            assert(go1.polygon is not None)
-            for go2 in game_objects:
-                assert(go2.polygon is not None)
-                if go1 is not go2 :
-                    if go1.is_colliding(go2):
-                        go1.collide(go2)
+            for go1 in game_objects:
+                assert(go1.polygon is not None)
+                for go2 in game_objects:
+                    assert(go2.polygon is not None)
+                    if go1 is not go2 :
+                        if go1.is_colliding(go2):
+                            go1.collide(go2)
 
-        no_clone_objects = [obj for obj in game_objects if not obj.is_clone()]
+            no_clone_objects = [obj for obj in game_objects if not obj.is_clone()]
 
-        for game_obj in no_clone_objects:
+            for game_obj in no_clone_objects:
 
-            if game_obj.intersects(BORDER_RIGHT):
-                game_obj.on_screen_wrap()
-                the_clone = game_obj.clone()
-                the_clone.x = game_obj.x - SPACE_X
-                the_clone.y = game_obj.y
+                crossing = False
 
-            elif game_obj.intersects(BORDER_LEFT):
-                game_obj.on_screen_wrap()
-                the_clone = game_obj.clone()
-                the_clone.x = game_obj.x + SPACE_X
-                the_clone.y = game_obj.y
+                if game_obj.intersects(BORDER_RIGHT):
+                    game_obj.on_screen_wrap()
+                    the_clone = game_obj.clone()
+                    the_clone.x = game_obj.x - SPACE_X
+                    the_clone.y = game_obj.y
+                    crossing = True
 
-            elif game_obj.intersects(BORDER_TOP):
-                game_obj.on_screen_wrap()
-                the_clone = game_obj.clone()
-                the_clone.x = game_obj.x
-                the_clone.y = game_obj.y - SPACE_Y
+                elif game_obj.intersects(BORDER_LEFT):
+                    game_obj.on_screen_wrap()
+                    the_clone = game_obj.clone()
+                    the_clone.x = game_obj.x + SPACE_X
+                    the_clone.y = game_obj.y
+                    crossing = True
 
-            elif game_obj.intersects(BORDER_BOTTOM):
-                game_obj.on_screen_wrap()
-                the_clone = game_obj.clone()
-                the_clone.x = game_obj.x
-                the_clone.y = game_obj.y + SPACE_Y
+                elif game_obj.intersects(BORDER_TOP):
+                    game_obj.on_screen_wrap()
+                    the_clone = game_obj.clone()
+                    the_clone.x = game_obj.x
+                    the_clone.y = game_obj.y - SPACE_Y
+                    crossing = True
 
-            if not game_obj.is_visible() and game_obj.has_clone() :
-                game_obj.x = game_obj.current_clone.x
-                game_obj.y = game_obj.current_clone.y
-                game_obj.unclone()
+                elif game_obj.intersects(BORDER_BOTTOM):
+                    game_obj.on_screen_wrap()
+                    the_clone = game_obj.clone()
+                    the_clone.x = game_obj.x
+                    the_clone.y = game_obj.y + SPACE_Y
+                    crossing = True
 
-        for game_obj in game_objects:
-            draw_poly(game, game_obj)
+                if not game_obj.is_visible() and game_obj.has_clone() :
+                    game_obj.x = game_obj.current_clone.x
+                    game_obj.y = game_obj.current_clone.y
+                    game_obj.unclone()
 
-        game.refresh()
+                if game_obj.is_visible() and game_obj.has_clone() and not crossing:
+                    game_obj.unclone()
 
-        game.endFrame()
+                if game_obj.x < -500 or game_obj.x > SPACE_X+500 or game_obj.y < -500 or game_obj.y > SPACE_Y+500:
+                    if game_obj.has_clone():
+                        game_obj.unclone()
+
+                    place_object_in_field(game_obj)
+
+
+            for game_obj in game_objects:
+                draw_poly(game, game_obj)
+                assert isinstance(game_obj, GameObject)
+                game_obj.expire()
+
+            game.refresh()
+
+            game.endFrame()
+
+            exists_particle = any(( isinstance(o, Particle) for o in game_objects))
+
+            if player1.status==STATUS_DEAD or player2.status==STATUS_DEAD and not exists_particle:
+                print("Player1: {} Player2: {}".format(player1.score, player2.score))
+
+                if player2.status==STATUS_DEAD and player1.status==STATUS_ALIVE :
+                    double_display("P 1","WINS")
+                elif player1.status==STATUS_DEAD and player2.status==STATUS_ALIVE :
+                    double_display("P 2","WINS")
+                else:
+                    double_display("DRAW","")
+
+                time.sleep(3)
+
+                break
+
+        except KeyboardInterrupt:
+            import pdb; pdb.set_trace()
+        except Exception as e :
+            print(e)
+            break
+
+    game.pause()
