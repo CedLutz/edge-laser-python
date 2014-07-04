@@ -51,6 +51,8 @@ class Player(GameObject):
         GameObject.__init__(self, x, y, width, length, color)
         self.score = 0
         self.alive = True
+        self.lastBounce = datetime.datetime.now()
+        self.bounceRange = 0
 
     def move(self, dx, dy):
         #make sure player remain in the field
@@ -63,6 +65,25 @@ class Player(GameObject):
 
         player.move(center2[0]-center1[0], center2[1]-center1[1])
         self.move(center1[0]-center2[0], center1[1]-center2[1])
+
+    def bounce(self):
+        if datetime.datetime.now() < self.lastBounce + datetime.timedelta(seconds=2):
+            self.bounceRange += 1
+        else:
+            self.bounceRange = 0
+
+        if self.y == 0:
+            self.move(0, 5 * self.bounceRange)
+        if self.y == MAX_Y - 1 - self.width:
+            self.move(0, -5 * self.bounceRange)
+
+        if self.x == 0:
+            self.move(5 * self.bounceRange, 0)
+        if self.x == MAX_X - 1 - self.length:
+            self.move(-5 * self.bounceRange, 0)
+
+        self.lastBounce = datetime.datetime.now()
+
 
     def intersect(self, obj):
         if self.alive:
@@ -114,6 +135,16 @@ class Dodge(object):
                     car.move(-Dodge.CAR_SPEED, 0)
                 car.draw()
 
+def display_msg(edgegame, edgefont, msg):
+    start_time = datetime.datetime.now()
+    stop_time = start_time + datetime.timedelta(seconds=3)
+
+    while datetime.datetime.now() < stop_time and not edgegame.isStopped():
+        edgegame.newFrame()
+        edgefont.render(edgegame, msg, 80, 150, coeff=4)
+        edgegame.refresh()
+        edgegame.endFrame()
+
 
 if __name__ == "__main__":
     game = EdgeLaser.LaserGame('Dodge')
@@ -129,8 +160,8 @@ if __name__ == "__main__":
             game.receiveServerCommands()
             time.sleep(0.5)
 
-        player1 = Player(100, 70, 30, 40, EdgeLaser.LaserColor.BLUE)
-        player2 = Player(100, 170, 30, 40, EdgeLaser.LaserColor.RED)
+        player1 = Player(100, 70, 30, 40, EdgeLaser.LaserColor.CYAN)
+        player2 = Player(100, 170, 30, 40, EdgeLaser.LaserColor.WHITE)
         dodge = Dodge()
         reset = False
 
@@ -168,6 +199,10 @@ if __name__ == "__main__":
                 if game.player2_keys.xp:
                     player2.move(5, 0)
 
+            for p in [player1, player2]:
+                if p.y == 0 or p.y == MAX_Y - 1 - p.width or p.x == 0 or p.x == MAX_X - 1 - p.length:
+                    p.bounce()
+
             if player1.intersect(player2):
                 player1.bump(player2)
 
@@ -201,3 +236,11 @@ if __name__ == "__main__":
 
             game.refresh()
             game.endFrame()
+
+            if player1.score == 3 or player2.score == 3:
+                if player1.score == 3:
+                    display_msg(game, font, "P1 WINS")
+                if player2.score == 3:
+                    display_msg(game, font, "P2 WINS")
+                game.pause()
+                break
