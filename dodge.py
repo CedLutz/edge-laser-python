@@ -95,10 +95,10 @@ class Player(GameObject):
 
 
 class Dodge(object):
-    MAX_CARS = 5
+    MAX_CARS = 6
     CAR_SPEED = 5
     MIN_WAIT = 500
-    MAX_WAIT = 2000
+    MAX_WAIT = 1500
     WIDTH = 30
     LENGTH = 40
 
@@ -164,6 +164,7 @@ if __name__ == "__main__":
         player2 = Player(100, 170, 30, 40, EdgeLaser.LaserColor.WHITE)
         dodge = Dodge()
         reset = False
+        display_msg(game, font, "DODGE")
 
         while not game.isStopped():
             if reset:
@@ -227,7 +228,7 @@ if __name__ == "__main__":
             game.addLine(0, MAX_Y-1, MAX_X-1, MAX_Y-1)
 
             if not player1.alive or not player2.alive:
-                if datetime.datetime.now() > dodge.crashTime + datetime.timedelta(seconds=3):
+                if datetime.datetime.now() > dodge.crashTime + datetime.timedelta(seconds=1.5):
                     #print("Player 1 : %s, Player2 : %s" % (player1.score, player2.score))
                     reset = True
 
